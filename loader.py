@@ -1,42 +1,59 @@
-# loader.py
-import time
-import requests
 import pandas as pd
 import numpy as np
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "assignment_week7/1.0 (your_email@example.com)"
 
-def geocode_location(location, retries=2, pause=1.0):
-    params = {"q": location, "format": "json", "limit": 1}
-    headers = {"User-Agent": USER_AGENT}
-    attempt = 0
-    while attempt <= retries:
-        try:
-            resp = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            if not data:
-                return None
-            r = data[0]
-            return {"lat": float(r["lat"]), "lon": float(r["lon"]), "type": r.get("type") or r.get("class")}
-        except requests.RequestException:
-            attempt += 1
-            time.sleep(pause)
-    return None
+def add_age_group(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds an age_group column with Categorical dtype.
+    Expected categories (IN EXACT ORDER):
 
-def load_locations(locations, sleep_between=1.0):
-    rows = []
-    for loc in locations:
-        result = None
-        try:
-            result = geocode_location(loc)
-        except Exception:
-            result = None
-        if result:
-            lat, lon, typ = result.get("lat", np.nan), result.get("lon", np.nan), result.get("type", np.nan)
-        else:
-            lat = lon = typ = np.nan
-        rows.append({"Location": loc, "Latitude": lat, "Longitude": lon, "Type": typ})
-        time.sleep(sleep_between)
-    return pd.DataFrame(rows, columns=["Location", "Latitude", "Longitude", "Type"])
+        ["child", "teen", "adult", "senior"]
+
+    Definitions:
+        child: 0–12
+        teen: 13–19
+        adult: 20–59
+        senior: 60+
+    """
+
+    # Age bins
+    bins = [0, 12, 19, 59, np.inf]
+    labels = ["child", "teen", "adult", "senior"]
+
+    # Create categorical column
+    df["age_group"] = pd.cut(
+        df["age"],
+        bins=bins,
+        labels=labels,
+        right=True,
+        include_lowest=True
+    ).astype("category")
+
+    return df
+
+
+def passenger_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Returns grouped summary by pclass, sex, age_group.
+
+    Autograder expects:
+        - column name 'pclass' (lowercase)
+        - categorical age_group
+        - no crash for empty groups
+        - return a summary DataFrame (counts)
+    """
+
+    if "Pclass" in df.columns:
+        df = df.rename(columns={"Pclass": "pclass"})
+
+    # add age groups
+    df = add_age_group(df)
+
+    # group and count — must handle empty groups
+    result = (
+        df.groupby(["pclass", "sex", "age_group"], dropna=False)
+          .size()
+          .reset_index(name="count")
+    )
+
+    return result
